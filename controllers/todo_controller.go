@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"database/sql"
 	"net/http"
 	"strconv"
 
@@ -13,10 +14,15 @@ import (
 func GetTodoHandler(env *config.Env) echo.HandlerFunc {
 	return echo.HandlerFunc(func(c echo.Context) error {
 		id, _ := strconv.Atoi(c.Param("id"))
-		todo := models.Todo{}
-		err := env.DB.QueryRow("select id, content from todos where id = $1", id).Scan(&todo.ID, &todo.Content)
-		if err != nil {
+		todo, err := models.FindTodoByID(env.DB, id)
+		switch {
+		case err == sql.ErrNoRows:
+			return echo.ErrNotFound
+		case err != nil:
 			return err
+		}
+		if todo.UserID != env.GetCurrentUserID(c) {
+			return echo.ErrForbidden
 		}
 		return c.JSON(http.StatusOK, todo)
 	})
@@ -24,18 +30,9 @@ func GetTodoHandler(env *config.Env) echo.HandlerFunc {
 
 func GetTodosHandler(env *config.Env) echo.HandlerFunc {
 	return echo.HandlerFunc(func(c echo.Context) error {
-		rows, err := env.DB.Query("select * from todos")
+		todos, err := models.FindTodosByUserID(env.DB, env.GetCurrentUserID(c))
 		if err != nil {
-			return c.String(http.StatusBadRequest, err.Error())
-		}
-		defer rows.Close()
-		var todos []models.Todo
-		for rows.Next() {
-			todo := models.Todo{}
-			if err := rows.Scan(&todo.ID, &todo.Content); err != nil {
-				return c.String(http.StatusBadRequest, err.Error())
-			}
-			todos = append(todos, todo)
+			return err
 		}
 		return c.JSON(http.StatusOK, &todos)
 	})
@@ -55,8 +52,8 @@ func CreateTodoHandler(env *config.Env) echo.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		var id int
-		err = tx.QueryRow("insert into todos (content) values ($1) returning id", req.Content).Scan(&id)
+		userID := env.GetCurrentUserID(c)
+		todo, err := models.SaveTodo(tx, &models.Todo{ID: 0, UserID: userID, Content: req.Content, Done: false})
 		if err != nil {
 			tx.Rollback()
 			return err
@@ -66,7 +63,7 @@ func CreateTodoHandler(env *config.Env) echo.HandlerFunc {
 			tx.Rollback()
 			return err
 		}
-		return c.JSON(http.StatusCreated, &models.Todo{id, req.Content, false})
+		return c.JSON(http.StatusCreated, todo)
 	})
 }
 
@@ -81,11 +78,16 @@ func UpdateTodoHandler(env *config.Env) echo.HandlerFunc {
 		if err := c.Bind(req); err != nil {
 			return err
 		}
+		todo, err := models.FindTodoByID(env.DB, id)
+		if err != nil {
+			return err
+		}
 		tx, err := env.DB.Begin()
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec("update todos set content = $1 where id = $2", req.Content, id)
+		todo.Content = req.Content
+		todo, err = models.SaveTodo(tx, todo)
 		if err != nil {
 			tx.Rollback()
 			return err
@@ -95,7 +97,7 @@ func UpdateTodoHandler(env *config.Env) echo.HandlerFunc {
 			tx.Rollback()
 			return err
 		}
-		return c.JSON(http.StatusOK, &models.Todo{id, req.Content, false})
+		return c.JSON(http.StatusOK, todo)
 	})
 }
 
@@ -106,7 +108,7 @@ func DeleteTodoHandler(env *config.Env) echo.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec("delete from todos where id = $1", id)
+		err = models.DeleteTodo(tx, id)
 		if err != nil {
 			tx.Rollback()
 			return err

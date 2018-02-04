@@ -10,7 +10,7 @@ type User struct {
 	Password string
 }
 
-func GetUserByID(db *sql.DB, id int) (*User, error) {
+func FindUserByID(db *sql.DB, id int) (*User, error) {
 	user := &User{}
 	err := db.QueryRow("select id, username, password from users where id = $1", id).Scan(&user.ID, &user.Username,
 		&user.Password)
@@ -20,7 +20,7 @@ func GetUserByID(db *sql.DB, id int) (*User, error) {
 	return user, nil
 }
 
-func GetUserByUsername(db *sql.DB, username string) (*User, error) {
+func FindUserByUsername(db *sql.DB, username string) (*User, error) {
 	user := &User{}
 	err := db.QueryRow("select id, username, password from users where username = $1", username).Scan(&user.ID,
 		&user.Username, &user.Password)

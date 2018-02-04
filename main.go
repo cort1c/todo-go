@@ -28,19 +28,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	env := &config.Env{db}
+	env := &config.Env{DB: db}
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Renderer = &TemplateRenderer{
 		templates: template.Must(template.ParseGlob("templates/*.html")),
 	}
-	e.GET("/todos", controllers.GetTodosHandler(env))
-	e.POST("/todos", controllers.CreateTodoHandler(env))
-	e.GET("/todos/:id", controllers.GetTodoHandler(env))
-	e.PUT("/todos/:id", controllers.UpdateTodoHandler(env))
-	e.DELETE("/todos/:id", controllers.DeleteTodoHandler(env))
-
 	e.POST("/login", controllers.LoginHandler(env))
+	g := e.Group("/todos")
+	g.Use(middleware.JWT([]byte(config.Secret)))
+	g.GET("", controllers.GetTodosHandler(env))
+	g.POST("", controllers.CreateTodoHandler(env))
+	g.GET("/:id", controllers.GetTodoHandler(env))
+	g.PUT("/:id", controllers.UpdateTodoHandler(env))
+	g.DELETE("/:id", controllers.DeleteTodoHandler(env))
 	e.Logger.Fatal(e.Start(":1323"))
 }
