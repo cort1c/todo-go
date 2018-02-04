@@ -14,15 +14,9 @@ import (
 func GetTodoHandler(env *config.Env) echo.HandlerFunc {
 	return echo.HandlerFunc(func(c echo.Context) error {
 		id, _ := strconv.Atoi(c.Param("id"))
-		todo, err := models.FindTodoByID(env.DB, id)
-		switch {
-		case err == sql.ErrNoRows:
-			return echo.ErrNotFound
-		case err != nil:
+		todo, err := getTodo(env, c, id)
+		if err != nil {
 			return err
-		}
-		if todo.UserID != env.GetCurrentUserID(c) {
-			return echo.ErrForbidden
 		}
 		return c.JSON(http.StatusOK, todo)
 	})
@@ -78,7 +72,7 @@ func UpdateTodoHandler(env *config.Env) echo.HandlerFunc {
 		if err := c.Bind(req); err != nil {
 			return err
 		}
-		todo, err := models.FindTodoByID(env.DB, id)
+		todo, err := getTodo(env, c, id)
 		if err != nil {
 			return err
 		}
@@ -104,6 +98,10 @@ func UpdateTodoHandler(env *config.Env) echo.HandlerFunc {
 func DeleteTodoHandler(env *config.Env) echo.HandlerFunc {
 	return echo.HandlerFunc(func(c echo.Context) error {
 		id, _ := strconv.Atoi(c.Param("id"))
+		_, err := getTodo(env, c, id)
+		if err != nil {
+			return err
+		}
 		tx, err := env.DB.Begin()
 		if err != nil {
 			return err
@@ -120,4 +118,18 @@ func DeleteTodoHandler(env *config.Env) echo.HandlerFunc {
 		}
 		return c.NoContent(http.StatusNoContent)
 	})
+}
+
+func getTodo(env *config.Env, c echo.Context, id int) (*models.Todo, error) {
+	todo, err := models.FindTodoByID(env.DB, id)
+	switch {
+	case err == sql.ErrNoRows:
+		return nil, echo.ErrNotFound
+	case err != nil:
+		return nil, err
+	}
+	if todo.UserID != env.GetCurrentUserID(c) {
+		return nil, echo.ErrForbidden
+	}
+	return todo, nil
 }

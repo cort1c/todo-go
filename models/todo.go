@@ -53,7 +53,7 @@ func SaveTodo(tx *sql.Tx, todo *Todo) (*Todo, error) {
 }
 
 func DeleteTodo(tx *sql.Tx, id int) error {
-	_, err := tx.Exec("delete rom todos where id = $1", id)
+	_, err := tx.Exec("delete from todos where id = $1", id)
 	if err != nil {
 		return err
 	}
